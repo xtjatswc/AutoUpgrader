@@ -120,8 +120,9 @@ class SyncEngine:
             return result
 
         affected = diff.files_to_download()
-        # 备份受影响文件 (add+update+delete)
-        backup_root = self.backup.backup(m.version, affected + [FileEntry(rel=r, sha256="", size=0, mtime=0) for r in diff.to_delete], snap)
+        # 备份受影响文件 (以当前本地版本命名, 便于回滚到该版本)
+        current_version = snap.current_version() or "v0"
+        backup_root = self.backup.backup(current_version, affected + [FileEntry(rel=r, sha256="", size=0, mtime=0) for r in diff.to_delete], snap)
 
         # 钩子 pre
         self._run_hook(self.cfg.hooks_pre_replace, "pre_replace")

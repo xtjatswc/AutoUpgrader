@@ -1,18 +1,18 @@
 {
   "files": [
     {
-      "mtime": 1792564852.4724407,
+      "mtime": 1792564817.5405414,
       "rel": "app.py",
-      "sha256": "fb084df5d6ecbd29107cd99e62f31edd1f4acd5b6fbc4061be2e5ca519d94564",
+      "sha256": "601dffe4599c31d54a934cb035e4c71defcfe68b784d2a458a4d8be770bab4a0",
       "size": 27
     },
     {
-      "mtime": 1792564862.76958,
+      "mtime": 1792564838.5823524,
       "rel": "config.json",
-      "sha256": "1916b7d4f433b3988b5b1152cb6e6f191bffc6d0d897775ca6e2d4093564be92",
-      "size": 40
+      "sha256": "6e12f69c82141b1d42e554755a2a63b8877c0b31ae7d645e2221be0cca0e422f",
+      "size": 41
     }
   ],
-  "published_at": "2026-10-21T06:53:01Z",
-  "version": "v2"
+  "published_at": "2026-10-21T08:09:24Z",
+  "version": "v1"
 }

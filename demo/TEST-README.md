@@ -205,10 +205,10 @@ python -m upgrader.cli rollback --config demo\client.json --version v1
 
 | 步骤 | 命令 | 输出 | 结果 |
 |---|---|---|---|
-| 同步 v1 | `sync` | `{"version":"v1","added":2,"ok":true}` | ✅ 文件落到 `demo\app\` |
-| 同步 v2 | `sync` | `{"version":"v2","updated":2,"ok":true}` | ✅ 增量更新为 v2 内容 |
+| 同步 v1 | `sync` | `{"version":"v1","added":2,"ok":true}` | ✅ 文件落到 `demo\app\`，备份到 `backups\v0\`（首次无旧版本） |
+| 同步 v2 | `sync` | `{"version":"v2","updated":2,"ok":true}` | ✅ 增量更新为 v2 内容，**备份到 `backups\v1\`（修复后按旧版本命名）** |
 | 查版本 | `version` | `{"local_version":"v2"}` | ✅ |
-| 回滚 v1 | `rollback --version v1` | `{"restored":0,"snapshot_restored":true}` | ✅ 快照回 v1 |
+| 回滚 v1 | `rollback --version v1` | `{"restored":2,"snapshot_restored":true,"backup_root":"...\backups\v1"}` | ✅ `restored:2`，文件内容回到 v1，快照回 v1 |
 
 ---
 
@@ -220,6 +220,13 @@ python -m upgrader.cli rollback --config demo\client.json --version v1
    不是切换目录。第一次实测就踩了这个坑：把 `server.json` 的 `publish_dir` 改成
    `release_v2` 再 publish，运行中的服务仍指向 `release_v1`，导致客户端下载
    `app.py` 拿到旧内容，哈希与 v2 清单不符 → 自动报错（完整性校验机制生效）。
+
+2. **备份目录按"被备份内容的版本"命名（已修复）**
+   早期实现里 `sync` 把备份命名为目标版本（同步到 v2 时把 v1 旧文件备份到
+   `backups/v2/`），导致 `rollback --version v1` 找不到 `backups/v1/` 而失败。
+   修复后 `sync.py` 改为用 `snap.current_version()`（当前本地版本）作为备份 key，
+   即同步到 v2 前把 v1 旧文件备份到 `backups/v1/`，回滚 `--version v1` 即可命中。
+   首次同步（无旧 snapshot）时 `current_version()` 为空，回退到 `v0`。
 
 2. **token 需对应当前密钥**
    `client.json` 的 `token` 必须用当前 `server.json` 的 `jwt_secret` 签发。
