@@ -12,6 +12,8 @@
 - health_command: 健康检查命令 (shell)
 - health_url: 健康检查 URL (二选一)
 - health_timeout: 秒
+- health_retries: 健康检查失败后重试次数 (0 表示只检查一次)
+- health_retry_interval: 重试间隔秒
 - hooks_pre_replace / hooks_post_replace: shell 命令 (可空)
 - batch_size: 单批拉取文件数
 - retries: 单文件重试次数
@@ -38,6 +40,8 @@ class ClientConfig:
     health_command: str = ""
     health_url: str = ""
     health_timeout: int = 15
+    health_retries: int = 0
+    health_retry_interval: int = 2
     hooks_pre_replace: str = ""
     hooks_post_replace: str = ""
     batch_size: int = 20
@@ -77,6 +81,8 @@ class ClientConfig:
             "health_command": self.health_command,
             "health_url": self.health_url,
             "health_timeout": self.health_timeout,
+            "health_retries": self.health_retries,
+            "health_retry_interval": self.health_retry_interval,
             "hooks_pre_replace": self.hooks_pre_replace,
             "hooks_post_replace": self.hooks_post_replace,
             "batch_size": self.batch_size,

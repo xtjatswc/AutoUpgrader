@@ -126,8 +126,40 @@ python -m pytest -q        # 46 用例，离线验证
 | `log_level` | 日志级别 `DEBUG/INFO/WARNING/...` | `INFO` |
 | `log_file` | 日志文件路径（留空仅控制台） | — |
 | `max_bytes` / `backup_count` | 日志轮转大小 / 保留份数 | `10485760` / `5` |
-| `include_patterns` / `exclude_patterns` | 清单扫描包含/排除 glob | — |
+| `include_patterns` / `exclude_patterns` | 清单扫描包含/排除过滤（子串匹配，详见 3.7 节） | — |
 | `token_ttl` | 签发 token 有效期（秒） | `3600` |
+
+### 3.7 文件过滤：`include_patterns` / `exclude_patterns`
+
+`build_manifest` 按相对路径做**子串匹配**（不是 glob）：
+
+```python
+rel = "dist/js/main.js"          # 文件相对 publish_dir 的路径
+if include_patterns and not any(p in rel for p in include_patterns):
+    continue                     # 配置了 include 时，不在白名单内的文件被跳过
+if any(p in rel for p in exclude_patterns):
+    continue                     # 黑名单优先，命中即跳过
+```
+
+| 行为 | 说明 |
+|---|---|
+| 不配置 `include_patterns` | 全量同步发布目录下的所有文件 |
+| 配置了 `include_patterns` | **白名单**：只同步相对路径包含其中任一子串的文件 |
+| 配置了 `exclude_patterns` | **黑名单**：命中即跳过，优先级高于 include |
+
+**示例**（`server.json`）：
+
+```json
+{
+  "include_patterns": ["dist/", "app/"],
+  "exclude_patterns": [".map", ".log", "test_"]
+}
+```
+
+- `dist/` 匹配 `dist/js/main.js`（带 `/` 前缀可精确到目录层级）
+- 排除所有 `.map`、`.log` 文件，以及相对路径中含 `test_` 的文件（如 `tests/test_x.py`、`scripts/test_run.sh`）
+
+> **注意**：子串匹配意味着 `app` 也会匹配到 `myapp/x.js`。要精确控制目录层级，请带上前缀字符，例如 `myapp/`。
 
 > **密钥长度**：Python 3.15 下 PyJWT 短密钥（<32 字节）由警告升级为异常，
 > 生产环境请务必使用 ≥32 字节密钥（可用 `python -c "import secrets;print(secrets.token_urlsafe(32))"` 生成）。
@@ -203,6 +235,8 @@ upgrader token --config server.json --role admin --subject ops --ttl 3600
   "verify_sign": true,
   "health_command": "python /app/healthcheck.py",
   "health_timeout": 30,
+  "health_retries": 3,
+  "health_retry_interval": 2,
   "hooks_pre_replace": ["stop_service.sh"],
   "hooks_post_replace": ["start_service.sh"],
   "retries": 2,
@@ -224,6 +258,8 @@ upgrader token --config server.json --role admin --subject ops --ttl 3600
 | `verify_sign` | 是否验签，默认 `true` |
 | `health_command` / `health_url` | 健康检查：外部命令（返回码）或 HTTP URL（2xx） |
 | `health_timeout` | 健康检查超时（秒） |
+| `health_retries` | 健康检查失败后**重试次数**（默认 `0` 只查一次） |
+| `health_retry_interval` | 两次健康检查间隔（秒，默认 `2`） |
 | `hooks_pre_replace` / `hooks_post_replace` | 替换前 / 后执行的钩子命令列表 |
 | `batch_size` | 每次同步拉取文件批大小 |
 | `retries` | 单文件下载重试次数 |
@@ -237,6 +273,21 @@ upgrader sync --config client.json
 
 同步结果输出 JSON：`{"ok": true, "version": "v2.1.0", "added": 3, "updated": 2, "deleted": 1, ...}`。
 健康检查失败会**自动回滚**并返回 `"ok": false, "rolled_back": true`。
+
+**健康检查重试（容忍服务启动慢）**：
+
+`hooks_post_replace` 启动的服务往往需要数秒才监听就绪。若 `health_retries` 为 0（默认），
+健康检查在钩子返回瞬间探测，服务尚未就绪会误判失败并自动回滚。配置示例：
+
+```json
+{
+  "health_retries": 5,
+  "health_retry_interval": 2
+}
+```
+
+表示失败后每隔 2s 重试，最多 5 次，给服务留出约 10s 的就绪窗口。
+仍失败才判定为不健康并触发回滚。
 
 ### 4.3 回滚
 
