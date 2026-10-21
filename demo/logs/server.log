@@ -1,4 +1,7 @@
-2026-10-21 16:08:40 [INFO] upgrader.server :: upgrader server listening on 127.0.0.1:8000 publish_dir=f:\临时文件夹\升级\demo\release
-2026-10-21 16:08:40 [INFO] upgrader.server :: server started pid=19432
-2026-10-21 16:09:24 [INFO] upgrader.server :: publish version=v1 files=2
-2026-10-21 16:09:43 [INFO] upgrader.server :: publish version=v2 files=2
+2026-10-21 21:16:22 [INFO] upgrader.server :: upgrader server listening on 127.0.0.1:8000 publish_dir=f:\临时文件夹\升级\demo\release
+2026-10-21 21:16:22 [INFO] upgrader.server :: server started pid=5896
+2026-10-21 21:16:43 [INFO] upgrader.server :: publish version=v1 files=2
+2026-10-21 21:17:18 [INFO] upgrader.server :: publish version=v2 files=2
+2026-10-21 21:18:25 [INFO] upgrader.server :: publish version=v9 files=2
+2026-10-21 21:18:25 [INFO] upgrader.server :: publish version=v10 files=2
+2026-10-21 21:18:26 [INFO] upgrader.server :: publish version=v1 files=2

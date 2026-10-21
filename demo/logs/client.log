@@ -1,7 +1,9 @@
-2026-10-21 16:09:25 [INFO] upgrader.client :: backup done root=f:\临时文件夹\升级\demo\backups\v0 files=2
-2026-10-21 16:09:25 [INFO] upgrader.client :: applied version=v1 +2 ~0 -0 unchanged=0
-2026-10-21 16:09:25 [INFO] upgrader.client :: sync done version=v1 added=2 updated=0 deleted=0 unchanged=0 in 0.30s
-2026-10-21 16:09:44 [INFO] upgrader.client :: backup done root=f:\临时文件夹\升级\demo\backups\v1 files=2
-2026-10-21 16:09:44 [INFO] upgrader.client :: applied version=v2 +0 ~2 -0 unchanged=0
-2026-10-21 16:09:44 [INFO] upgrader.client :: sync done version=v2 added=0 updated=2 deleted=0 unchanged=0 in 0.40s
-2026-10-21 16:10:10 [INFO] upgrader.client :: rollback to v1: restored 2 files, snapshot restored
+2026-10-21 21:17:01 [INFO] upgrader.client :: loaded public key for signature verification
+2026-10-21 21:17:01 [INFO] upgrader.client :: backup done root=f:\临时文件夹\升级\demo\backups\v0 files=0/0 full=True
+2026-10-21 21:17:01 [INFO] upgrader.client :: applied version=v1 +2 ~0 -0 unchanged=0
+2026-10-21 21:17:01 [INFO] upgrader.client :: sync done version=v1 added=2 updated=0 deleted=0 unchanged=0 in 0.11s
+2026-10-21 21:17:19 [INFO] upgrader.client :: loaded public key for signature verification
+2026-10-21 21:17:19 [INFO] upgrader.client :: backup done root=f:\临时文件夹\升级\demo\backups\v1 files=2/2 full=True
+2026-10-21 21:17:19 [INFO] upgrader.client :: applied version=v2 +0 ~2 -0 unchanged=0
+2026-10-21 21:17:19 [INFO] upgrader.client :: sync done version=v2 added=0 updated=2 deleted=0 unchanged=0 in 0.10s
+2026-10-21 21:17:39 [INFO] upgrader.client :: rollback to v1: restored 2, deleted 0, snapshot restored

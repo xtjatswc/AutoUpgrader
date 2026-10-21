@@ -1,18 +1,18 @@
 {
   "files": [
     {
-      "mtime": 1792564817.5405414,
+      "mtime": 1792588564.1971169,
       "rel": "app.py",
       "sha256": "601dffe4599c31d54a934cb035e4c71defcfe68b784d2a458a4d8be770bab4a0",
       "size": 27
     },
     {
-      "mtime": 1792564838.5823524,
+      "mtime": 1792588564.2000873,
       "rel": "config.json",
       "sha256": "6e12f69c82141b1d42e554755a2a63b8877c0b31ae7d645e2221be0cca0e422f",
       "size": 41
     }
   ],
-  "published_at": "2026-10-21T08:09:24Z",
+  "published_at": "2026-10-21T13:16:43Z",
   "version": "v1"
 }

@@ -1,19 +1,19 @@
 {
   "files": [
     {
-      "mtime": 1792564817.5405414,
+      "mtime": 1792588638.3186378,
       "rel": "app.py",
-      "sha256": "601dffe4599c31d54a934cb035e4c71defcfe68b784d2a458a4d8be770bab4a0",
+      "sha256": "fb084df5d6ecbd29107cd99e62f31edd1f4acd5b6fbc4061be2e5ca519d94564",
       "size": 27
     },
     {
-      "mtime": 1792564838.5823524,
+      "mtime": 1792588638.316637,
       "rel": "config.json",
-      "sha256": "6e12f69c82141b1d42e554755a2a63b8877c0b31ae7d645e2221be0cca0e422f",
-      "size": 41
+      "sha256": "1916b7d4f433b3988b5b1152cb6e6f191bffc6d0d897775ca6e2d4093564be92",
+      "size": 40
     }
   ],
-  "published_at": "2026-10-21T08:09:24Z",
-  "sign": "UfkHGwpEbmDvMZBLX2CObKuGfjLcVqwgZp3GCh+HNbvlkUdrdI1Kfxl0MI16ibNdDf3NkGqT9rXWLTLQbe9QDw==",
+  "published_at": "2026-10-21T13:18:26Z",
+  "sign": "lqTWIVIqPO73wLSvas2wNNketSaL8rTDA6QKQdVIwQZ/0H2OmrzvBXn66ZQMoINXHE+J340mmUAFyOZvLSQEDg==",
   "version": "v1"
 }
