@@ -1,0 +1,11 @@
+{
+  "host": "127.0.0.1",
+  "port": 8000,
+  "publish_dir": "f:\\临时文件夹\\升级\\demo\\release",
+  "data_dir": "f:\\临时文件夹\\升级\\demo\\data",
+  "jwt_secret": "windows-demo-jwt-secret-00000000000",
+  "admin_jwt_secret": "windows-demo-admin-secret-00000000",
+  "log_level": "INFO",
+  "log_file": "f:\\临时文件夹\\升级\\demo\\logs\\server.log",
+  "token_ttl": 3600
+}

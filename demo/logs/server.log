@@ -1,0 +1,4 @@
+2026-10-21 14:52:34 [INFO] upgrader.server :: upgrader server listening on 127.0.0.1:8000 publish_dir=f:\临时文件夹\升级\demo\release
+2026-10-21 14:52:34 [INFO] upgrader.server :: server started pid=14712
+2026-10-21 14:52:47 [INFO] upgrader.server :: publish version=v1 files=2
+2026-10-21 14:53:01 [INFO] upgrader.server :: publish version=v2 files=2

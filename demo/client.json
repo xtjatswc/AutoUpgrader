@@ -1,0 +1,13 @@
+{
+  "server_url": "http://127.0.0.1:8000",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZW1vLWFwcCIsInJvbGVzIjpbImNsaWVudCJdLCJpYXQiOjE3OTI1NjUxMDYsIm5iZiI6MTc5MjU2NTEwNiwiZXhwIjoxNzkyNTcyMzA2fQ.FEZXfuXJeF2arlEmqxs6-gjuee5SlLtLEeAbhZxdcjU",
+  "target_dir": "f:\\临时文件夹\\升级\\demo\\app",
+  "snapshot_dir": "f:\\临时文件夹\\升级\\demo\\clientdata",
+  "backup_dir": "f:\\临时文件夹\\升级\\demo\\backups",
+  "public_key": "f:\\临时文件夹\\升级\\demo\\data\\keys\\pub.pem",
+  "verify_sign": true,
+  "health_command": "",
+  "retries": 2,
+  "log_level": "INFO",
+  "log_file": "f:\\临时文件夹\\升级\\demo\\logs\\client.log"
+}
