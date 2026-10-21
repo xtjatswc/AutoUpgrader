@@ -1,0 +1,19 @@
+F
+================================== FAILURES ===================================
+_______________________ test_manifest_with_client_token _______________________
+
+runner = <tests.test_server_http._ServerRunner object at 0x000001FEF5710830>
+tmp_env = {'release': WindowsPath('F:/Temp/pytest-of-Administrator/pytest-7/test_manifest_with_client_toke0/release'), 'cfg': Se...'), 'server_data': WindowsPath('F:/Temp/pytest-of-Administrator/pytest-7/test_manifest_with_client_toke0/server_data')}
+
+    def test_manifest_with_client_token(runner, tmp_env):
+        cfg = tmp_env["cfg"]
+        tok = issue_token(cfg.jwt_secret, "client1", ["client"])
+        code, body = _req(runner.base() + "/api/v1/manifest", token=tok)
+>       assert code == 200
+E       assert 401 == 200
+
+tests\test_server_http.py:99: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_server_http.py::test_manifest_with_client_token - assert 401 == 200
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed in 0.65s

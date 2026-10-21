@@ -1,0 +1,102 @@
+....................................FFFFFF....                           [100%]
+================================== FAILURES ===================================
+_______________________ test_manifest_with_client_token _______________________
+
+runner = <tests.test_server_http._ServerRunner object at 0x0000018C8B54BB10>
+tmp_env = {'release': WindowsPath('F:/Temp/pytest-of-Administrator/pytest-6/test_manifest_with_client_toke0/release'), 'cfg': Se...'), 'server_data': WindowsPath('F:/Temp/pytest-of-Administrator/pytest-6/test_manifest_with_client_toke0/server_data')}
+
+    def test_manifest_with_client_token(runner, tmp_env):
+        cfg = tmp_env["cfg"]
+        tok = issue_token(cfg.jwt_secret, "client1", ["client"])
+        code, body = _req(runner.base() + "/api/v1/manifest", token=tok)
+>       assert code == 200
+E       assert 401 == 200
+
+tests\test_server_http.py:99: AssertionError
+____________________________ test_version_endpoint ____________________________
+
+runner = <tests.test_server_http._ServerRunner object at 0x0000018C8B527E10>
+tmp_env = {'release': WindowsPath('F:/Temp/pytest-of-Administrator/pytest-6/test_version_endpoint0/release'), 'cfg': ServerConfi...data/keys'), 'server_data': WindowsPath('F:/Temp/pytest-of-Administrator/pytest-6/test_version_endpoint0/server_data')}
+
+    def test_version_endpoint(runner, tmp_env):
+        cfg = tmp_env["cfg"]
+        tok = issue_token(cfg.jwt_secret, "c", ["client"])
+        code, body = _req(runner.base() + "/api/v1/version", token=tok)
+>       assert code == 200
+E       assert 401 == 200
+
+tests\test_server_http.py:109: AssertionError
+_____________________________ test_file_download ______________________________
+
+runner = <tests.test_server_http._ServerRunner object at 0x0000018C8B527950>
+tmp_env = {'release': WindowsPath('F:/Temp/pytest-of-Administrator/pytest-6/test_file_download0/release'), 'cfg': ServerConfig(h...er_data/keys'), 'server_data': WindowsPath('F:/Temp/pytest-of-Administrator/pytest-6/test_file_download0/server_data')}
+
+    def test_file_download(runner, tmp_env):
+        cfg = tmp_env["cfg"]
+        tok = issue_token(cfg.jwt_secret, "c", ["client"])
+        code, body = _req(runner.base() + "/api/v1/files?rel=a.txt", token=tok)
+>       assert code == 200
+E       assert 401 == 200
+
+tests\test_server_http.py:117: AssertionError
+_________________________ test_publish_requires_admin _________________________
+
+runner = <tests.test_server_http._ServerRunner object at 0x0000018C8B4D31D0>
+tmp_env = {'release': WindowsPath('F:/Temp/pytest-of-Administrator/pytest-6/test_publish_requires_admin0/release'), 'cfg': Serve...eys'), 'server_data': WindowsPath('F:/Temp/pytest-of-Administrator/pytest-6/test_publish_requires_admin0/server_data')}
+
+    def test_publish_requires_admin(runner, tmp_env):
+        cfg = tmp_env["cfg"]
+        # 仅 client 角色 token 不能发布
+        client_tok = issue_token(cfg.jwt_secret, "c", ["client"])
+        code, _ = _req(runner.base() + "/api/v1/publish", token=client_tok, method="POST",
+                       data={"version": "v2"})
+        assert code == 403
+        # admin 角色可以
+        admin_tok = issue_token(cfg.admin_jwt_secret, "adm", ["admin"])
+        code, body = _req(runner.base() + "/api/v1/publish", token=admin_tok, method="POST",
+                          data={"version": "v2"})
+>       assert code == 200
+E       assert 403 == 200
+
+tests\test_server_http.py:133: AssertionError
+________________________________ test_history _________________________________
+
+runner = <tests.test_server_http._ServerRunner object at 0x0000018C8B666030>
+tmp_env = {'release': WindowsPath('F:/Temp/pytest-of-Administrator/pytest-6/test_history0/release'), 'cfg': ServerConfig(host='1...0/server_data/keys'), 'server_data': WindowsPath('F:/Temp/pytest-of-Administrator/pytest-6/test_history0/server_data')}
+
+    def test_history(runner, tmp_env):
+        cfg = tmp_env["cfg"]
+        tok = issue_token(cfg.jwt_secret, "c", ["client"])
+        code, body = _req(runner.base() + "/api/v1/history", token=tok)
+>       assert code == 200
+E       assert 401 == 200
+
+tests\test_server_http.py:141: AssertionError
+_________________________ test_file_traversal_blocked _________________________
+
+runner = <tests.test_server_http._ServerRunner object at 0x0000018C8B666470>
+tmp_env = {'release': WindowsPath('F:/Temp/pytest-of-Administrator/pytest-6/test_file_traversal_blocked0/release'), 'cfg': Serve...eys'), 'server_data': WindowsPath('F:/Temp/pytest-of-Administrator/pytest-6/test_file_traversal_blocked0/server_data')}
+
+    def test_file_traversal_blocked(runner, tmp_env):
+        cfg = tmp_env["cfg"]
+        tok = issue_token(cfg.jwt_secret, "c", ["client"])
+        # 目录穿越应返回 404
+        code, _ = _req(runner.base() + "/api/v1/files?rel=..%2F..%2Fetc%2Fpasswd", token=tok)
+>       assert code == 404
+E       assert 401 == 404
+
+tests\test_server_http.py:150: AssertionError
+============================== warnings summary ===============================
+tests/test_server_http.py::test_manifest_requires_token
+  C:\Users\Administrator\AppData\Local\Python\pythoncore-3.15-64\Lib\site-packages\jwt\api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 12 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_server_http.py::test_manifest_with_client_token - assert 401 == 200
+FAILED tests/test_server_http.py::test_version_endpoint - assert 401 == 200
+FAILED tests/test_server_http.py::test_file_download - assert 401 == 200
+FAILED tests/test_server_http.py::test_publish_requires_admin - assert 403 == 200
+FAILED tests/test_server_http.py::test_history - assert 401 == 200
+FAILED tests/test_server_http.py::test_file_traversal_blocked - assert 401 == 404
+6 failed, 40 passed, 1 warning in 5.51s

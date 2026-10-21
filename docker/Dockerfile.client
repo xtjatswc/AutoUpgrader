@@ -1,0 +1,19 @@
+# 客户端镜像: 在业务容器内运行 upgrader sync
+# 构建: docker build -f docker/Dockerfile.client -t upgrader-client .
+# 通常以临时容器或 sidecar 方式运行:
+#   docker run --rm -v /app:/app -v /var/lib/upgrader:/var/lib/upgrader upgrader-client \
+#       sync --config /etc/upgrader/client.json
+FROM python:3.15-slim
+
+WORKDIR /opt/upgrader
+
+COPY pyproject.toml ./
+COPY upgrader ./upgrader
+RUN pip install --no-cache-dir "pyjwt>=2.8.0" "cryptography>=42.0.0"
+
+RUN mkdir -p /var/lib/upgrader /var/log/upgrader /etc/upgrader
+ENV UPGRADER_CONFIG=/etc/upgrader/client.json
+
+# 默认 entrypoint: 同步一次后退出 (适合 cron / CI / k8s 任务)
+ENTRYPOINT ["python", "-m", "upgrader.cli"]
+CMD ["sync", "--config", "/etc/upgrader/client.json"]

@@ -1,0 +1,40 @@
+# 示例 docker-compose: 升级中心 + 业务容器
+# 业务容器把 /app 作为被升级目录, 通过 upgrader-client 侧车定期同步.
+services:
+  upgrader-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+    image: upgrader-server:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./release:/srv/releases          # 发布目录 (待同步文件树)
+      - server-data:/var/lib/upgrader    # 版本历史 / 清单 / 密钥
+      - ./keys:/etc/upgrader/keys        # Ed25519 密钥
+    environment:
+      UPGRADER_CONFIG: /etc/upgrader/config.json
+
+  my-app:
+    image: my-app:latest
+    volumes:
+      - app-files:/app                   # 被升级目录
+    depends_on:
+      - upgrader-server
+
+  upgrader-client:
+    image: upgrader-client:latest
+    volumes:
+      - app-files:/app
+      - client-data:/var/lib/upgrader
+      - ./keys:/etc/upgrader/keys:ro
+      - ./client.json:/etc/upgrader/client.json
+    depends_on:
+      - upgrader-server
+    # 周期任务示例 (实际可改用 cron / k8s CronJob)
+    command: ["sync", "--config", "/etc/upgrader/client.json"]
+
+volumes:
+  server-data:
+  client-data:
+  app-files:

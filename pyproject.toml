@@ -1,0 +1,27 @@
+[project]
+name = "auto-upgrader"
+version = "1.0.0"
+description = "自动升级工具：服务端 + 客户端，增量哈希同步、签名校验、版本回滚、健康检查、JWT 认证"
+requires-python = ">=3.10"
+# 最小依赖策略：仅依赖 PyJWT（JWT 认证）与 cryptography（Ed25519 签名）。
+# Python 3.15 下这两个库均已支持；HTTP 层用标准库 http.server / urllib.request 实现，避免 Flask 兼容风险。
+dependencies = [
+    "pyjwt>=2.8.0",
+    "cryptography>=42.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+upgrader = "upgrader.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

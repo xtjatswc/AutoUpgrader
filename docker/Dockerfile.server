@@ -1,0 +1,25 @@
+# 服务端镜像: 升级中心 (HTTP API + JWT 认证 + 签名清单)
+# 构建: docker build -f docker/Dockerfile.server -t upgrader-server .
+# 运行需挂载:
+#   - /srv/releases      当前发布目录
+#   - /var/lib/upgrader  服务端数据 (版本历史 / 清单 / 密钥)
+#   - /etc/upgrader      密钥与配置
+FROM python:3.15-slim
+
+WORKDIR /opt/upgrader
+
+# 安装依赖 (最小依赖: PyJWT + cryptography)
+COPY pyproject.toml ./
+COPY upgrader ./upgrader
+RUN pip install --no-cache-dir -r requirements.txt || \
+    pip install --no-cache-dir "pyjwt>=2.8.0" "cryptography>=42.0.0"
+
+# 默认配置 (可被 /etc/upgrader/config.json 覆盖)
+RUN mkdir -p /srv/releases /var/lib/upgrader /etc/upgrader /var/log/upgrader
+COPY docker/server.default.json /etc/upgrader/config.json
+
+EXPOSE 8000
+
+# 非 root 用户运行 (需要目录属主)
+ENV UPGRADER_CONFIG=/etc/upgrader/config.json
+CMD ["python", "-m", "upgrader.cli", "server", "--config", "/etc/upgrader/config.json"]
