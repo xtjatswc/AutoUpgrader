@@ -34,6 +34,20 @@ def test_build_manifest_exclude(tmp_path):
     assert rels == ["keep.txt"]
 
 
+def test_build_manifest_glob_patterns(tmp_path):
+    (tmp_path / "a.py").write_text("a", encoding="utf-8")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "b.py").write_text("b", encoding="utf-8")
+    (tmp_path / "sub" / "c.log").write_text("c", encoding="utf-8")
+    m = build_manifest(str(tmp_path), version="v1",
+                       include_patterns=["*.py"], exclude_patterns=["sub/*"])
+    rels = [e.rel for e in m.files]
+    assert rels == ["a.py"]
+    # glob '*' 在 fnmatch 中不跨 '/', sub/c.log 应被 *.log 匹配
+    m2 = build_manifest(str(tmp_path), version="v1", exclude_patterns=["*.log"])
+    assert [e.rel for e in m2.files] == ["a.py", "sub/b.py"]
+
+
 def test_manifest_serialization_roundtrip():
     m = Manifest(version="v9", published_at="t",
                 files=[FileEntry(rel="x", sha256="h", size=3, mtime=1.0)])

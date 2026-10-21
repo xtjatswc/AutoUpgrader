@@ -31,14 +31,19 @@
    服务端扫描文件树、计算 `sha256 + size + mtime` 清单，用 Ed25519 对清单整体签名，
    持久化并设为当前版本。
 2. **客户端**：定时（cron / CI / 一次性任务）执行 `upgrader sync`：
-   - 拉取当前版本清单并**验签**（`verify_sign` 开启时）；
+   - 获取同步锁（防止并发 sync 互相破坏）；
+   - 若发现上次同步的 **pending 标记**（写 snapshot 后、健康检查完成前崩溃），
+     先从备份恢复同步前状态再继续；
+   - 拉取当前版本清单并**验签**（`verify_sign` 开启时，缺公钥直接失败）；
    - 与本地 snapshot 做 **diff**（to_add / to_update / to_delete）；
-   - **备份**受影响文件到 `backup_dir/<version>/`；
-   - 执行 `hooks_pre_replace`；
-   - 下载差异文件到临时目录，校验 sha256，**原子 rename** 替换；
-   - 删除多余文件，写新 snapshot；
+   - **备份**到 `backup_dir/<version>/`（默认全量备份目标目录）；
+   - 执行 `hooks_pre_replace`（`stop_on_hook_failure=true` 时失败即中止）；
+   - 下载差异文件到暂存目录（`target_dir/.upgrader_staging`，与目标同卷），
+     校验 sha256（失败重试），**原子 rename** 替换；
+   - 删除多余文件，写新 snapshot 并记录 pending 标记；
    - 执行 `hooks_post_replace`；
-   - 运行**健康检查**（命令或 URL）；失败则**自动回滚**（恢复文件 + 旧 snapshot + 钩子）。
+   - 运行**健康检查**（命令或 URL）；通过则清除 pending；
+     失败则**自动回滚**（恢复文件 + 旧 snapshot + 钩子）并清除 pending。
 
 ### 目录结构
 
@@ -58,6 +63,7 @@
 │       ├── verify.py
 │       ├── backup.py
 │       ├── health.py
+│       ├── hooks.py
 │       ├── rollback.py
 │       ├── httpclient.py
 │       └── config.py
@@ -88,7 +94,7 @@ python -m upgrader.cli <子命令>
 
 ```bash
 pip install pytest
-python -m pytest -q        # 46 用例，离线验证
+python -m pytest -q        # 离线验证
 ```
 
 ---
@@ -106,8 +112,8 @@ python -m pytest -q        # 46 用例，离线验证
   "port": 8000,
   "publish_dir": "/srv/releases",
   "data_dir": "/var/lib/upgrader",
-  "jwt_secret": "请换成至少32位的随机字符串",
-  "admin_jwt_secret": "管理面独立密钥（可选，缺省复用 jwt_secret）",
+  "jwt_secret": "可选: 至少32位随机字符串; 留空则自动生成并持久化到 data_dir/jwt_secret.key",
+  "admin_jwt_secret": "管理面独立密钥（可选，缺省复用 jwt_secret 解析结果）",
   "log_level": "INFO",
   "log_file": "/var/log/upgrader/server.log"
 }
@@ -121,8 +127,8 @@ python -m pytest -q        # 46 用例，离线验证
 | `publish_dir` | 发布目录（被签名文件树） | `./release` |
 | `data_dir` | 数据目录（版本历史 / 清单 / 密钥） | `./data` |
 | `key_dir` | Ed25519 密钥目录，缺省 `data_dir/keys` | — |
-| `jwt_secret` | 数据面 JWT 密钥（建议 ≥32 字节） | — |
-| `admin_jwt_secret` | 管理面 JWT 密钥，缺省复用 `jwt_secret` | — |
+| `jwt_secret` | 数据面 JWT 密钥（建议 ≥32 字节）；**留空或为默认值 `change-me` 时首次启动自动生成并持久化到 `data_dir/jwt_secret.key`**，跨进程保持稳定 | 占位符 `change-me`（等价于未配置） |
+| `admin_jwt_secret` | 管理面 JWT 密钥，缺省复用 `jwt_secret` 解析结果 | — |
 | `log_level` | 日志级别 `DEBUG/INFO/WARNING/...` | `INFO` |
 | `log_file` | 日志文件路径（留空仅控制台） | — |
 | `max_bytes` / `backup_count` | 日志轮转大小 / 保留份数 | `10485760` / `5` |
@@ -131,38 +137,40 @@ python -m pytest -q        # 46 用例，离线验证
 
 ### 3.7 文件过滤：`include_patterns` / `exclude_patterns`
 
-`build_manifest` 按相对路径做**子串匹配**（不是 glob）：
+`build_manifest` 按相对路径做**子串或 glob（`fnmatch`）匹配**（两种写法都支持，命中任一即算匹配）：
 
 ```python
 rel = "dist/js/main.js"          # 文件相对 publish_dir 的路径
-if include_patterns and not any(p in rel for p in include_patterns):
+if include_patterns and not _matches(rel, include_patterns):
     continue                     # 配置了 include 时，不在白名单内的文件被跳过
-if any(p in rel for p in exclude_patterns):
+if _matches(rel, exclude_patterns):
     continue                     # 黑名单优先，命中即跳过
 ```
 
 | 行为 | 说明 |
 |---|---|
 | 不配置 `include_patterns` | 全量同步发布目录下的所有文件 |
-| 配置了 `include_patterns` | **白名单**：只同步相对路径包含其中任一子串的文件 |
+| 配置了 `include_patterns` | **白名单**：只同步命中任一模式（子串或 glob）的文件 |
 | 配置了 `exclude_patterns` | **黑名单**：命中即跳过，优先级高于 include |
 
 **示例**（`server.json`）：
 
 ```json
 {
-  "include_patterns": ["dist/", "app/"],
-  "exclude_patterns": [".map", ".log", "test_"]
+  "include_patterns": ["dist/", "app/", "*.so"],
+  "exclude_patterns": [".map", "*.log", "test_"]
 }
 ```
 
-- `dist/` 匹配 `dist/js/main.js`（带 `/` 前缀可精确到目录层级）
-- 排除所有 `.map`、`.log` 文件，以及相对路径中含 `test_` 的文件（如 `tests/test_x.py`、`scripts/test_run.sh`）
+- `dist/` 子串匹配 `dist/js/main.js`（带 `/` 前缀可精确到目录层级）
+- `*.so` glob 匹配所有 `.so` 文件；`*.log` 同理
+- 子串匹配意味着 `app` 也会匹配到 `myapp/x.js`。要精确控制，请改用 glob（如 `myapp/*`）或带前缀子串（如 `myapp/`）
 
-> **注意**：子串匹配意味着 `app` 也会匹配到 `myapp/x.js`。要精确控制目录层级，请带上前缀字符，例如 `myapp/`。
+> **注意**：glob 中 `*` 不跨 `/`（fnmatch 语义），`sub/*.py` 只匹配一层；需要跨层用 `**` 不适用，请写多个模式。
 
-> **密钥长度**：Python 3.15 下 PyJWT 短密钥（<32 字节）由警告升级为异常，
-> 生产环境请务必使用 ≥32 字节密钥（可用 `python -c "import secrets;print(secrets.token_urlsafe(32))"` 生成）。
+> **密钥长度**：Python 3.15 下 PyJWT 短密钥（<32 字节）由警告升级为异常。
+> 未配置 `jwt_secret` 时工具会**自动生成 ≥32 字节随机密钥并持久化**到 `data_dir/jwt_secret.key`（权限 0600），无需手工维护；
+> 显式配置时请使用 ≥32 字节密钥（可用 `python -c "import secrets;print(secrets.token_urlsafe(32))"` 生成）。
 
 ### 3.2 生成密钥对
 
@@ -231,14 +239,18 @@ upgrader token --config server.json --role admin --subject ops --ttl 3600
   "target_dir": "/app",
   "snapshot_dir": "/var/lib/upgrader",
   "backup_dir": "/var/lib/upgrader/backups",
-  "public_key": "-----BEGIN PUBLIC KEY-----\n...",
+  "public_key": "-----BEGIN PUBLIC KEY-----\n... (公钥 PEM 内容或 PEM 文件路径均可)",
   "verify_sign": true,
   "health_command": "python /app/healthcheck.py",
   "health_timeout": 30,
   "health_retries": 3,
   "health_retry_interval": 2,
-  "hooks_pre_replace": ["stop_service.sh"],
-  "hooks_post_replace": ["start_service.sh"],
+  "hooks_pre_replace": "/opt/scripts/stop_service.sh",
+  "hooks_post_replace": "/opt/scripts/start_service.sh",
+  "stop_on_hook_failure": false,
+  "backup_full": true,
+  "backup_keep": 0,
+  "http_timeout": 60,
   "retries": 2,
   "log_level": "INFO",
   "log_file": "/var/log/upgrader/client.log"
@@ -254,15 +266,18 @@ upgrader token --config server.json --role admin --subject ops --ttl 3600
 | `target_dir` | 被同步目录 |
 | `snapshot_dir` | 本地快照目录（记录已同步版本） |
 | `backup_dir` | 备份目录（回滚用） |
-| `public_key` | Ed25519 公钥 PEM（`verify_sign` 开启时必填） |
+| `backup_full` | 备份模式：`true`（默认）备份整个目标目录（全量，含用户自置文件），保证回滚到任意历史版本时目录状态一致；`false` 仅备份受影响文件（旧行为） |
+| `backup_keep` | 最多保留的备份版本数，`0` 不限制（默认） |
+| `public_key` | Ed25519 公钥，支持 **PEM 内容**（`-----BEGIN` 开头）或 **PEM 文件路径**（`verify_sign` 开启时必填；开启但解析不到公钥时同步直接失败，fail-closed） |
 | `verify_sign` | 是否验签，默认 `true` |
-| `health_command` / `health_url` | 健康检查：外部命令（返回码）或 HTTP URL（2xx） |
+| `health_command` / `health_url` | 健康检查：外部命令（返回码）或 HTTP URL（2xx），二选一 |
 | `health_timeout` | 健康检查超时（秒） |
 | `health_retries` | 健康检查失败后**重试次数**（默认 `0` 只查一次） |
 | `health_retry_interval` | 两次健康检查间隔（秒，默认 `2`） |
-| `hooks_pre_replace` / `hooks_post_replace` | 替换前 / 后执行的钩子命令列表 |
-| `batch_size` | 每次同步拉取文件批大小 |
-| `retries` | 单文件下载重试次数 |
+| `hooks_pre_replace` / `hooks_post_replace` | 替换前 / 后执行的钩子命令（单个 shell 字符串，`shell=True` 执行，120s 超时） |
+| `stop_on_hook_failure` | `hooks_pre_replace` 失败时是否中止同步（默认 `false` 仅告警继续；`true` 则中止且不改动本地文件） |
+| `http_timeout` | 单次 HTTP 请求超时（秒，默认 `60`） |
+| `retries` | 单文件下载重试次数（下载失败或哈希校验失败都会重试） |
 | `log_level` / `log_file` / `max_bytes` / `backup_count` | 日志配置 |
 
 ### 4.2 同步
@@ -292,12 +307,23 @@ upgrader sync --config client.json
 ### 4.3 回滚
 
 ```bash
-# 查看可用备份版本（在 backup_dir 下列出）
-upgrader version --config client.json
+# 查看可用备份版本（backup_dir 下每个子目录即一个备份版本）
+ls backup_dir/
 
 # 回滚到指定备份版本
 upgrader rollback --config client.json --version v2.0.0
 ```
+
+回滚语义：
+
+- **全量备份**（`backup_full=true`，默认）：按备份中的完整文件镜像恢复目标目录，
+  并删除备份时不存在、之后新增的多余文件 —— 目录状态与同步前完全一致；
+- **增量备份**（`backup_full=false`）：仅恢复备份中记录的受影响文件（旧行为）；
+- 回滚前后执行 `hooks_pre_replace` / `hooks_post_replace`（rollback 阶段），并做健康检查
+  （结果在返回 JSON 的 `healthy` 字段，失败仅告警不阻断）；
+- 同时恢复同步前的 snapshot，使下次同步 diff 基于正确基线。
+
+备份保留：`backup_keep=N` 时每次备份后自动清理最旧的备份，仅保留最近 N 份。
 
 ### 4.4 查看本地版本
 
@@ -398,22 +424,23 @@ volumes:
 
 ## 八、测试
 
-`tests/` 下 46 个 pytest 用例，**全部离线验证，不依赖外部工具/网络**：
+`tests/` 下 61 个 pytest 用例，**全部离线验证，不依赖外部工具/网络**：
 
 | 文件 | 用例数 | 覆盖 |
 |---|---|---|
 | `test_crypto.py` | 7 | Ed25519 密钥/签名/篡改拒绝、JWT 签发/验证/错误密钥/过期 |
-| `test_manifest.py` | 7 | 清单扫描/过滤/序列化/diff/快照 |
-| `test_server_http.py` | 8 | 真实 `ThreadingHTTPServer` 随机端口：认证 401/403、manifest/版本/下载/历史/目录穿越 |
+| `test_manifest.py` | 8 | 清单扫描/子串+glob 过滤/序列化/diff/快照 |
+| `test_server_http.py` | 8 | 真实 `ThreadingHTTPServer` 随机端口：认证 401/403、manifest/版本/流式下载/历史/目录穿越 |
 | `test_sync.py` | 4 | 全量同步、noop、哈希损坏重试、签名不匹配拒绝（`FakeTransport` 离线模拟） |
 | `test_backup.py` | 4 | 备份/恢复/回滚 API/版本列表 |
-| `test_health.py` | 6 | 命令/URL 健康检查（monkeypatch 隔离） |
+| `test_health.py` | 9 | 命令/URL 健康检查（含重试策略） |
 | `test_logcfg.py` | 4 | 级别过滤/轮转/去重/全级别 |
 | `test_cli.py` | 4 | CLI 参数/token/init-keys/version |
 | `test_e2e.py` | 2 | 端到端：健康检查失败自动回滚、版本不变无操作 |
+| `test_new_features.py` | 11 | fail-closed 验签、内联 PEM、并发锁、pending 崩溃恢复、全量备份回滚一致性、备份保留、钩子中止、自然排序、JWT 密钥自动生成、http_timeout |
 
 ```bash
-python -m pytest -q     # 46 passed
+python -m pytest -q     # 61 passed
 ```
 
 ---

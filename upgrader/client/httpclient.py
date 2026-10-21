@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import json
-import urllib.request
+import os
+import shutil
 import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Optional
 
 
@@ -13,40 +16,58 @@ class Transport:
     def get_json(self, url: str, token: str, params: Optional[dict] = None) -> dict:
         raise NotImplementedError
 
-    def get_bytes(self, url: str, token: str, params: Optional[dict] = None,
-                   if_none_match: Optional[str] = None) -> tuple[bytes, int, Optional[str]]:
-        """返回 (data, status_code, etag_or_none). 304 时 data 为空, status=304."""
+    def get_bytes(self, url: str, token: str, params: Optional[dict] = None) -> tuple[bytes, int]:
+        """返回 (data, status_code). 仅 200 视为成功内容."""
         raise NotImplementedError
+
+    def get_file(self, url: str, token: str, params: Optional[dict],
+                 dst_path: str) -> int:
+        """下载到 dst_path (由调用方保证与目标同卷), 返回状态码. 默认基于 get_bytes."""
+        data, status = self.get_bytes(url, token, params)
+        if status == 200:
+            d = os.path.dirname(dst_path)
+            if d:
+                os.makedirs(d, exist_ok=True)
+            with open(dst_path, "wb") as f:
+                f.write(data)
+        return status
 
 
 class UrllibTransport(Transport):
+    def __init__(self, timeout: Optional[float] = None):
+        self.timeout = timeout
+
     def get_json(self, url: str, token: str, params: Optional[dict] = None) -> dict:
         full = self._build(url, params)
         req = urllib.request.Request(full, headers=self._headers(token))
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
             raw = resp.read()
         return json.loads(raw.decode())
 
-    def get_bytes(self, url: str, token: str, params: Optional[dict] = None,
-                  if_none_match: Optional[str] = None) -> tuple[bytes, int, Optional[str]]:
+    def get_bytes(self, url: str, token: str, params: Optional[dict] = None) -> tuple[bytes, int]:
         full = self._build(url, params)
-        headers = self._headers(token)
-        if if_none_match:
-            headers["If-None-Match"] = if_none_match
-        req = urllib.request.Request(full, headers=headers)
+        req = urllib.request.Request(full, headers=self._headers(token))
         try:
-            with urllib.request.urlopen(req) as resp:
-                data = resp.read()
-                etag = resp.headers.get("ETag")
-                return data, resp.status, etag
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                return resp.read(), resp.status
         except urllib.error.HTTPError as e:
-            if e.code == 304:
-                return b"", 304, if_none_match
             data = e.read()
-            try:
-                raise RuntimeError(f"HTTP {e.code}: {data.decode()[:200]}") from e
-            except UnicodeDecodeError:
-                raise RuntimeError(f"HTTP {e.code}") from e
+            msg = data.decode(errors="replace")[:200]
+            raise RuntimeError(f"HTTP {e.code}: {msg}") from e
+
+    def get_file(self, url: str, token: str, params: Optional[dict],
+                 dst_path: str) -> int:
+        full = self._build(url, params)
+        req = urllib.request.Request(full, headers=self._headers(token))
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            if resp.status != 200:
+                raise RuntimeError(f"HTTP {resp.status}: unexpected status for {url}")
+            d = os.path.dirname(dst_path)
+            if d:
+                os.makedirs(d, exist_ok=True)
+            with open(dst_path, "wb") as f:
+                shutil.copyfileobj(resp, f, 1024 * 1024)
+            return resp.status
 
     @staticmethod
     def _build(url: str, params: Optional[dict]) -> str:

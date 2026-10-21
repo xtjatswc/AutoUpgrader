@@ -17,7 +17,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
+import shutil
+import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
@@ -25,7 +26,6 @@ from typing import Optional
 import jwt
 
 from ..crypto import (
-    KeyPair,
     init_keys,
     sign_manifest,
     verify_token,
@@ -47,9 +47,14 @@ class UpgraderServer:
         key_dir = config.resolve_key_dir()
         self.keypair = init_keys(key_dir)
         self.store = VersionStore(config.data_dir)
+        # 数据面/管理面 JWT 密钥: 显式配置优先, 否则自动生成持久化密钥
+        self.jwt_secret = config.resolve_jwt_secret()
+        self.admin_secret = config.resolve_admin_secret()
+        # 并发 publish 保护: 防止多线程同时写 manifest / current
+        self._publish_lock = threading.Lock()
         # 校验 JWT 密钥长度 (PyJWT RFC 7518: HMAC-SHA256 建议 >= 32 字节)
-        for name, secret in (("jwt_secret", config.jwt_secret),
-                             ("admin_jwt_secret", config.resolve_admin_secret())):
+        for name, secret in (("jwt_secret", self.jwt_secret),
+                             ("admin_secret", self.admin_secret)):
             if len(secret) < 32:
                 self.logger.warning(
                     "%s is %d bytes (<32), PyJWT may reject tokens; "
@@ -60,17 +65,18 @@ class UpgraderServer:
 
     def publish(self, version: str, published_at: str = "") -> dict:
         """扫描 publish_dir → 生成清单 → Ed25519 签名 → 持久化 → 设为当前."""
-        m = build_manifest(
-            self.cfg.publish_dir,
-            version=version,
-            published_at=published_at,
-            include_patterns=self.cfg.include_patterns,
-            exclude_patterns=self.cfg.exclude_patterns,
-        )
-        sig = sign_manifest(self.keypair.private_pem, m.files_json(), version, m.published_at)
-        m.sign = sig
-        self.store.save(m, sig)
-        self.store.set_current(version)
+        with self._publish_lock:
+            m = build_manifest(
+                self.cfg.publish_dir,
+                version=version,
+                published_at=published_at,
+                include_patterns=self.cfg.include_patterns,
+                exclude_patterns=self.cfg.exclude_patterns,
+            )
+            sig = sign_manifest(self.keypair.private_pem, m.files_json(), version, m.published_at)
+            m.sign = sig
+            self.store.save(m, sig)
+            self.store.set_current(version)
         self.logger.info("publish version=%s files=%d", version, len(m.files))
         return {
             "version": version,
@@ -93,8 +99,8 @@ class UpgraderServer:
 
     # ---- 文件下载 ----
 
-    def read_file_bytes(self, rel: str) -> Optional[bytes]:
-        """读取发布目录下的相对路径文件. 防目录穿越."""
+    def resolve_file(self, rel: str) -> Optional[tuple[str, int]]:
+        """校验发布目录下的相对路径文件, 返回 (本地路径, 字节数). 防目录穿越."""
         rel = rel.lstrip("/")
         norm = os.path.normpath(rel)
         if norm.startswith("..") or os.path.isabs(norm):
@@ -102,7 +108,14 @@ class UpgraderServer:
         full = os.path.join(self.cfg.publish_dir, norm)
         if not os.path.isfile(full):
             return None
-        with open(full, "rb") as f:
+        return full, os.path.getsize(full)
+
+    def read_file_bytes(self, rel: str) -> Optional[bytes]:
+        """resolve_file 的一次性读取版本 (测试 / 小文件场景)."""
+        resolved = self.resolve_file(rel)
+        if resolved is None:
+            return None
+        with open(resolved[0], "rb") as f:
             return f.read()
 
 
@@ -137,7 +150,7 @@ def _check_role(secret: str, token: Optional[str], role: str,
 class _Handler(BaseHTTPRequestHandler):
     server_version = "Upgrader/1.0"
 
-    # 由 make_handler 注入 (Python 3.13+ PEP 709 影响闭包类体, 改用 instance 注入)
+    # 由 ThreadingHTTPServer._upgrader_inject 注入 (Python 3.13+ PEP 709 影响闭包类体, 改用 instance 注入)
     core: Optional[UpgraderServer] = None
     jwt_secret: str = ""
     admin_secret: str = ""
@@ -168,14 +181,18 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_file(self, data: bytes, etag: str = "") -> None:
+    def _send_file_stream(self, path: str, size: int) -> None:
+        """流式发送文件, 不把整个文件读进内存."""
         self.send_response(200)
         self.send_header("Content-Type", "application/octet-stream")
-        self.send_header("Content-Length", str(len(data)))
-        if etag:
-            self.send_header("ETag", etag)
+        self.send_header("Content-Length", str(size))
         self.end_headers()
-        self.wfile.write(data)
+        with open(path, "rb") as f:
+            while True:
+                chunk = f.read(256 * 1024)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
 
     def _not_found(self, msg: str = "not found") -> None:
         self._send_json(404, {"error": msg})
@@ -226,11 +243,11 @@ class _Handler(BaseHTTPRequestHandler):
             if not rel:
                 self._send_json(400, {"error": "rel query param required"})
                 return
-            data = self.core.read_file_bytes(rel)
+            data = self.core.resolve_file(rel)
             if data is None:
                 self._not_found(f"file {rel!r} not available")
                 return
-            self._send_file(data, etag="")
+            self._send_file_stream(*data)
             return
 
         if path == "/api/v1/history":
@@ -280,16 +297,6 @@ class _Handler(BaseHTTPRequestHandler):
         self._not_found()
 
 
-def make_handler(core: UpgraderServer, jwt_secret: str, admin_secret: str, logger: logging.Logger) -> type:
-    """生成绑定 core 的 handler 类.
-
-    Python 3.13+ PEP 709 改变了闭包在类体中的绑定行为, 因此把 state
-    放到 ThreadingHTTPServer 实例属性上, 在 handler __init__ 时注入.
-    返回的 _Handler 类本身无额外 state, 兼容 ThreadingHTTPServer.
-    """
-    return _Handler
-
-
 def run_server(config: ServerConfig) -> ThreadingHTTPServer:
     """启动服务端, 阻塞运行. 返回 server 实例以便测试 .shutdown()."""
     core = UpgraderServer(config)
@@ -297,8 +304,8 @@ def run_server(config: ServerConfig) -> ThreadingHTTPServer:
     # 注入 state 到 server 实例, handler __init__ 时会拷贝到 self
     httpd._upgrader_inject = {
         "core": core,
-        "jwt_secret": config.jwt_secret,
-        "admin_secret": config.resolve_admin_secret(),
+        "jwt_secret": core.jwt_secret,
+        "admin_secret": core.admin_secret,
         "logger": core.logger,
     }
     core.logger.info(

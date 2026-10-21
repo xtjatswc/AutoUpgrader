@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import os
@@ -80,6 +81,11 @@ def hash_file(path: str) -> str:
     return h.hexdigest()
 
 
+def _matches(rel: str, pats: List[str]) -> bool:
+    """子串或 glob (fnmatch) 匹配: 'sub/' 前缀仍有效, '*.so' 等 glob 同样支持."""
+    return any((p in rel) or fnmatch.fnmatch(rel, p) for p in pats)
+
+
 def build_manifest(
     publish_dir: str,
     version: str,
@@ -89,7 +95,7 @@ def build_manifest(
 ) -> Manifest:
     """扫描 publish_dir 生成清单.
 
-    include/exclude 为相对路径的子串匹配 (支持 'sub/' 前缀匹配).
+    include/exclude 支持子串或 glob 模式 (相对路径, 如 '*.so', 'docs/*.md').
     """
     include = include_patterns or []
     exclude = exclude_patterns or []
@@ -98,9 +104,9 @@ def build_manifest(
         for fn in fnames:
             full = os.path.join(root, fn)
             rel = os.path.relpath(full, publish_dir).replace(os.sep, "/")
-            if include and not any(p in rel for p in include):
+            if include and not _matches(rel, include):
                 continue
-            if any(p in rel for p in exclude):
+            if exclude and _matches(rel, exclude):
                 continue
             try:
                 st = os.stat(full)

@@ -104,11 +104,10 @@ class FakeTransport(Transport):
             return {"version": self.core.store.current() or ""}
         raise KeyError(url)
 
-    def get_bytes(self, url: str, token: str, params: dict | None = None,
-                  if_none_match: str | None = None):
+    def get_bytes(self, url: str, token: str, params: dict | None = None):
         self.calls.append(f"GET {url}?{params}")
         rel = (params or {}).get("rel", "")
         data = self.core.read_file_bytes(rel)
         if data is None:
             raise FileNotFoundError(rel)
-        return data, 200, None
+        return data, 200

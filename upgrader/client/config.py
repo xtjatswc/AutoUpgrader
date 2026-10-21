@@ -6,22 +6,27 @@
 - target_dir: 被同步的目录 (本地)
 - snapshot_dir: 本地 snapshot.json 所在目录
 - backup_dir: 备份目录
+- backup_full: 备份整个目标目录 (True, 默认) 或仅受影响文件 (False).
+  全量备份才能保证回滚到任意历史版本时目录状态一致.
+- backup_keep: 最多保留的备份版本数, 0 表示不限制
 - log_level, log_file, max_bytes, backup_count
-- public_key: 验签公钥 (pub.pem 路径), 为空则跳过签名校验
-- verify_sign: 是否验签
+- public_key: 验签公钥, 支持 PEM 内容 (-----BEGIN 开头) 或 PEM 文件路径
+- verify_sign: 是否验签; 开启但无法取得公钥时同步直接失败 (fail-closed)
 - health_command: 健康检查命令 (shell)
 - health_url: 健康检查 URL (二选一)
 - health_timeout: 秒
 - health_retries: 健康检查失败后重试次数 (0 表示只检查一次)
 - health_retry_interval: 重试间隔秒
 - hooks_pre_replace / hooks_post_replace: shell 命令 (可空)
-- batch_size: 单批拉取文件数
-- retries: 单文件重试次数
+- stop_on_hook_failure: pre_replace 钩子失败时是否中止同步 (默认仅告警继续)
+- http_timeout: 单次 HTTP 请求超时秒
+- retries: 单文件下载重试次数
 """
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+import os
+from dataclasses import dataclass, fields
 
 
 @dataclass
@@ -31,6 +36,8 @@ class ClientConfig:
     target_dir: str = "./app"
     snapshot_dir: str = "./data/client/snapshot"
     backup_dir: str = "./data/client/backup"
+    backup_full: bool = True
+    backup_keep: int = 0
     log_level: str = "INFO"
     log_file: str = ""
     max_bytes: int = 10 * 1024 * 1024
@@ -44,21 +51,18 @@ class ClientConfig:
     health_retry_interval: int = 2
     hooks_pre_replace: str = ""
     hooks_post_replace: str = ""
-    batch_size: int = 20
+    stop_on_hook_failure: bool = False
+    http_timeout: int = 60
     retries: int = 3
 
     @property
     def snapshot_path(self) -> str:
-        import os
         return os.path.join(self.snapshot_dir, "snapshot.json")
 
-    @staticmethod
-    def from_dict(d: dict) -> "ClientConfig":
-        c = ClientConfig()
-        for k, v in d.items():
-            if hasattr(c, k):
-                setattr(c, k, v)
-        return c
+    @classmethod
+    def from_dict(cls, d: dict) -> "ClientConfig":
+        names = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in d.items() if k in names})
 
     @staticmethod
     def from_file(path: str) -> "ClientConfig":
@@ -66,25 +70,4 @@ class ClientConfig:
             return ClientConfig.from_dict(json.load(f))
 
     def to_dict(self) -> dict:
-        return {
-            "server_url": self.server_url,
-            "token": self.token,
-            "target_dir": self.target_dir,
-            "snapshot_dir": self.snapshot_dir,
-            "backup_dir": self.backup_dir,
-            "log_level": self.log_level,
-            "log_file": self.log_file,
-            "max_bytes": self.max_bytes,
-            "backup_count": self.backup_count,
-            "public_key": self.public_key,
-            "verify_sign": self.verify_sign,
-            "health_command": self.health_command,
-            "health_url": self.health_url,
-            "health_timeout": self.health_timeout,
-            "health_retries": self.health_retries,
-            "health_retry_interval": self.health_retry_interval,
-            "hooks_pre_replace": self.hooks_pre_replace,
-            "hooks_post_replace": self.hooks_post_replace,
-            "batch_size": self.batch_size,
-            "retries": self.retries,
-        }
+        return {f.name: getattr(self, f.name) for f in fields(self)}

@@ -78,10 +78,10 @@ class _CorruptTransport(Transport):
     def get_json(self, url, token, params=None):
         return self.core.current_manifest()
 
-    def get_bytes(self, url, token, params=None, if_none_match=None):
+    def get_bytes(self, url, token, params=None):
         rel = (params or {}).get("rel", "")
         data = self.core.read_file_bytes(rel)
-        return b"CORRUPTED" + (data or b""), 200, None
+        return b"CORRUPTED" + (data or b""), 200
 
 
 def _fresh_server():

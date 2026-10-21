@@ -21,7 +21,7 @@ import sys
 import time
 
 from . import __version__
-from .crypto import init_keys, issue_token, KeyPair
+from .crypto import init_keys, issue_token
 from .logcfg import setup_logger
 from .server.app import UpgraderServer, run_server
 from .server.config import ServerConfig
@@ -77,7 +77,7 @@ def cmd_publish(args):
 
 def cmd_token(args):
     cfg = _load_server_cfg(args)
-    secret = cfg.resolve_admin_secret() if args.role == "admin" else cfg.jwt_secret
+    secret = cfg.resolve_admin_secret() if args.role == "admin" else cfg.resolve_jwt_secret()
     token = issue_token(secret, args.subject, [args.role], ttl=args.ttl)
     print(token)
     return 0
@@ -96,8 +96,13 @@ def cmd_sync(args):
     if not cfg.token:
         logger.error("client token not configured; cannot authenticate to server")
         return 2
-    engine = SyncEngine(cfg, logger, transport=UrllibTransport())
-    result = engine.sync()
+    engine = SyncEngine(cfg, logger, transport=UrllibTransport(timeout=cfg.http_timeout))
+    try:
+        result = engine.sync()
+    except Exception as e:
+        logger.error("sync failed: %s", e)
+        print(json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False))
+        return 1
     print(json.dumps(result.to_dict(), ensure_ascii=False))
     return 0 if result.ok else 1
 

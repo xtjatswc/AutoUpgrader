@@ -50,7 +50,8 @@ def runner(tmp_env):
     cfg = tmp_env["cfg"]
     logger = setup_logger("upgrader.server.test", "DEBUG", None, console=False, reset=True)
     core = UpgraderServer(cfg, logger)
-    r = _ServerRunner(core, cfg.jwt_secret, cfg.resolve_admin_secret())
+    # handler 使用 core 上解析出的密钥 (显式配置优先, 否则自动生成)
+    r = _ServerRunner(core, core.jwt_secret, core.admin_secret)
     # 先发布一个版本, 使 current 存在
     core.publish("v1")
     yield r

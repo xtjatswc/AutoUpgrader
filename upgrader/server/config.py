@@ -5,17 +5,21 @@
 - publish_dir: 当前发布目录 (被签名的文件树)
 - data_dir: 服务端数据目录 (版本历史, 清单持久化, 密钥)
 - key_dir: 密钥目录 (priv.pem/pub.pem), 默认 data_dir/keys
-- jwt_secret: JWT HS256 密钥 (客户端交互认证)
-- admin_jwt_secret: 管理面密钥 (publish 等), 未设置则与 jwt_secret 相同
+- jwt_secret: JWT HS256 密钥 (客户端交互认证).
+  未设置 (或为默认占位值) 时首次启动自动生成随机密钥并持久化到 data_dir/jwt_secret.key
+- admin_jwt_secret: 管理面密钥 (publish 等), 未设置则与数据面密钥相同
 - log_level, log_file, max_bytes, backup_count
-- include_patterns / exclude_patterns: 清单过滤
+- include_patterns / exclude_patterns: 清单过滤 (子串或 glob 模式)
 """
 from __future__ import annotations
 
 import json
 import os
+import secrets
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List
+
+DEFAULT_JWT_SECRET_PLACEHOLDER = "change-me"
 
 
 @dataclass
@@ -25,7 +29,7 @@ class ServerConfig:
     publish_dir: str = "./release"
     data_dir: str = "./data/server"
     key_dir: str = ""            # 空则 data_dir/keys
-    jwt_secret: str = "change-me"
+    jwt_secret: str = DEFAULT_JWT_SECRET_PLACEHOLDER
     admin_jwt_secret: str = ""   # 空则与 jwt_secret 相同
     log_level: str = "INFO"
     log_file: str = ""
@@ -38,8 +42,31 @@ class ServerConfig:
     def resolve_key_dir(self) -> str:
         return self.key_dir or os.path.join(self.data_dir, "keys")
 
+    def resolve_jwt_secret(self) -> str:
+        """数据面 JWT 密钥. 显式配置则使用; 否则加载/生成 data_dir/jwt_secret.key."""
+        if self.jwt_secret and self.jwt_secret != DEFAULT_JWT_SECRET_PLACEHOLDER:
+            return self.jwt_secret
+        return self._ensure_generated_secret()
+
+    def _ensure_generated_secret(self) -> str:
+        os.makedirs(self.data_dir, exist_ok=True)
+        path = os.path.join(self.data_dir, "jwt_secret.key")
+        if os.path.isfile(path):
+            with open(path, "r", encoding="utf-8") as f:
+                s = f.read().strip()
+            if s:
+                return s
+        s = secrets.token_urlsafe(48)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(s)
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+        return s
+
     def resolve_admin_secret(self) -> str:
-        return self.admin_jwt_secret or self.jwt_secret
+        return self.admin_jwt_secret or self.resolve_jwt_secret()
 
     @staticmethod
     def from_dict(d: dict) -> "ServerConfig":

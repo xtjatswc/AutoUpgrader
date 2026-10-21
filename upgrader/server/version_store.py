@@ -8,7 +8,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import List, Optional
+
+
+def _version_sort_key(v: str):
+    """自然排序键: 数字段按数值比较, 其余按字符串. 'v2' < 'v10' < 'v1.2' 语义下正确."""
+    return tuple(int(p) if p.isdigit() else p for p in re.split(r"(\d+)", v))
 
 
 class VersionStore:
@@ -49,6 +55,7 @@ class VersionStore:
     def history(self, limit: int = 50) -> List[str]:
         names = sorted(
             [n[:-5] for n in os.listdir(self.manifest_dir) if n.endswith(".json")],
+            key=_version_sort_key,
             reverse=True,
         )
         return names[:limit]
